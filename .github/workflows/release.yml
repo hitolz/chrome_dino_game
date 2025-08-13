@@ -83,31 +83,48 @@ jobs:
     - name: Build
       run: cargo build --release --target ${{ matrix.target }}
     
-    - name: Prepare artifact
+    - name: Prepare release package
       shell: bash
       run: |
+        # 创建发布目录
+        mkdir -p release-package
+        
+        # 复制可执行文件
         if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-          if [[ "${{ matrix.target }}" == "aarch64-pc-windows-msvc" ]]; then
-            cp target/${{ matrix.target }}/release/dino_game.exe ${{ matrix.artifact }}
-          else
-            cp target/${{ matrix.target }}/release/dino_game.exe ${{ matrix.artifact }}
-          fi
+          cp target/${{ matrix.target }}/release/dino_game.exe release-package/
         else
-          cp target/${{ matrix.target }}/release/dino_game ${{ matrix.artifact }}
+          cp target/${{ matrix.target }}/release/dino_game release-package/
         fi
         
-        # 创建发布包
-        mkdir -p release-package
-        cp ${{ matrix.artifact }} release-package/
-        cp -r assets release-package/ 2>/dev/null || true
+        # 复制游戏资源
+        cp -r assets release-package/
         cp README.md release-package/ 2>/dev/null || true
+        
+        # 创建压缩包
+        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+          cd release-package && zip -r ../${{ matrix.artifact }}.zip . && cd ..
+        else
+          tar -czf ${{ matrix.artifact }}.tar.gz -C release-package .
+        fi
     
-    - name: Upload Release Asset
+    - name: Upload Windows Release Asset
+      if: matrix.os == 'windows-latest'
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.release.outputs.upload_url }}
-        asset_path: ./${{ matrix.artifact }}
-        asset_name: ${{ matrix.artifact }}
-        asset_content_type: application/octet-stream
+        asset_path: ./${{ matrix.artifact }}.zip
+        asset_name: ${{ matrix.artifact }}.zip
+        asset_content_type: application/zip
+    
+    - name: Upload Unix Release Asset
+      if: matrix.os != 'windows-latest'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.release.outputs.upload_url }}
+        asset_path: ./${{ matrix.artifact }}.tar.gz
+        asset_name: ${{ matrix.artifact }}.tar.gz
+        asset_content_type: application/gzip

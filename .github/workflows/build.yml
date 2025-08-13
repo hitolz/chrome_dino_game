@@ -49,20 +49,32 @@ jobs:
     - name: Prepare artifact
       shell: bash
       run: |
-        # 创建统一的文件名
+        # 创建发布目录
+        mkdir -p release-package
+        
+        # 复制可执行文件
         if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-          if [[ "${{ matrix.target }}" == "aarch64-pc-windows-msvc" ]]; then
-            cp target/${{ matrix.target }}/release/dino_game.exe ${{ matrix.artifact }}
-          else
-            cp target/${{ matrix.target }}/release/dino_game.exe ${{ matrix.artifact }}
-          fi
+          cp target/${{ matrix.target }}/release/dino_game.exe release-package/
         else
-          # Linux 和 macOS 没有 .exe 扩展名
-          cp target/${{ matrix.target }}/release/dino_game ${{ matrix.artifact }}
+          cp target/${{ matrix.target }}/release/dino_game release-package/
+        fi
+        
+        # 复制游戏资源
+        cp -r assets release-package/
+        cp README.md release-package/ 2>/dev/null || true
+        
+        # 创建压缩包
+        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+          cd release-package && zip -r ../${{ matrix.artifact }}.zip . && cd ..
+        else
+          tar -czf ${{ matrix.artifact }}.tar.gz -C release-package .
         fi
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact }}
-        path: ${{ matrix.artifact }}
+        path: |
+          ${{ matrix.artifact }}.zip
+          ${{ matrix.artifact }}.tar.gz
+        if-no-files-found: ignore
