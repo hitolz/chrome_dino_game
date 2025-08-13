@@ -1,0 +1,23 @@
+[package]
+name = "dino_game"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.16.0", features = ["default"] }
+rand = "0.9.1"
+
+# 优化编译选项
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+# Windows 发布版本优化
+[profile.release]
+opt-level = 3
+lto = true
+panic = "abort"
+codegen-units = 1
+strip = true
