@@ -1,0 +1,78 @@
+name: Release Game (Updated)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: dino_game.exe
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            artifact: dino_game-arm64.exe
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: dino_game-linux
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: dino_game-macos-intel
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: dino_game-macos-arm64
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+    
+    - name: Install dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libasound2-dev libudev-dev libxkbcommon-dev
+    
+    - name: Build
+      run: cargo build --release --target ${{ matrix.target }}
+    
+    - name: Prepare artifact
+      shell: bash
+      run: |
+        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+          cp target/${{ matrix.target }}/release/dino_game.exe ${{ matrix.artifact }}
+        else
+          cp target/${{ matrix.target }}/release/dino_game ${{ matrix.artifact }}
+        fi
+    
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ${{ matrix.artifact }}
+        body: |
+          ## 🦕 恐龙游戏新版本发布！
+          
+          ### 📦 下载链接
+          请根据你的操作系统选择对应的版本：
+          
+          - **Windows (x64)**: dino_game.exe
+          - **Windows (ARM64)**: dino_game-arm64.exe  
+          - **Linux (x64)**: dino_game-linux
+          - **macOS (Intel)**: dino_game-macos-intel
+          - **macOS (Apple Silicon)**: dino_game-macos-arm64
+          
+          ### 🎮 游戏说明
+          - 空格键：跳跃
+          - ESC键：退出游戏
+          - 躲避仙人掌，获得高分！
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
