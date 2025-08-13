@@ -46,22 +46,23 @@ jobs:
     - name: Build
       run: cargo build --release --target ${{ matrix.target }}
     
-    - name: Rename Windows executable
-      if: matrix.os == 'windows-latest'
+    - name: Prepare artifact
       shell: bash
       run: |
-        if [ "${{ matrix.target }}" = "aarch64-pc-windows-msvc" ]; then
-          mv target/${{ matrix.target }}/release/dino_game.exe target/${{ matrix.target }}/release/dino_game-arm64.exe
+        # 创建统一的文件名
+        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+          if [[ "${{ matrix.target }}" == "aarch64-pc-windows-msvc" ]]; then
+            cp target/${{ matrix.target }}/release/dino_game.exe ${{ matrix.artifact }}
+          else
+            cp target/${{ matrix.target }}/release/dino_game.exe ${{ matrix.artifact }}
+          fi
+        else
+          # Linux 和 macOS 没有 .exe 扩展名
+          cp target/${{ matrix.target }}/release/dino_game ${{ matrix.artifact }}
         fi
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact }}
-        path: |
-          target/${{ matrix.target }}/release/dino_game.exe
-          target/${{ matrix.target }}/release/dino_game-arm64.exe
-          target/${{ matrix.target }}/release/dino_game-linux
-          target/${{ matrix.target }}/release/dino_game-macos-intel
-          target/${{ matrix.target }}/release/dino_game-macos-arm64
-        if-no-files-found: ignore
+        path: ${{ matrix.artifact }}
