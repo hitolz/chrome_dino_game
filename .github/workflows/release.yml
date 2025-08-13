@@ -6,46 +6,8 @@ on:
       - 'v*'  # 当推送 v* 标签时触发
 
 jobs:
-  release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    outputs:
-      release_id: ${{ steps.create_release.outputs.id }}
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-    steps:
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ github.ref }}
-        release_name: 恐龙游戏 ${{ github.ref }}
-        body: |
-          ## 🦕 恐龙游戏新版本发布！
-          
-          ### 📦 下载链接
-          请根据你的操作系统选择对应的版本：
-          
-          - **Windows (x64)**: dino_game.exe
-          - **Windows (ARM64)**: dino_game-arm64.exe  
-          - **Linux (x64)**: dino_game-linux
-          - **macOS (Intel)**: dino_game-macos-intel
-          - **macOS (Apple Silicon)**: dino_game-macos-arm64
-          
-          ### 🎮 游戏说明
-          - 空格键：跳跃
-          - ESC键：退出游戏
-          - 躲避仙人掌，获得高分！
-          
-          ### 🐛 问题反馈
-          如果遇到问题，请在 Issues 中反馈。
-        draft: false
-        prerelease: false
-
-  build:
-    name: Build and Upload
-    needs: release
+  build-and-release:
+    name: Build and Release
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -104,28 +66,34 @@ jobs:
         if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
           # Windows 使用 PowerShell 的 Compress-Archive
           powershell -Command "Compress-Archive -Path release-package/* -DestinationPath ${{ matrix.artifact }}.zip"
+          echo "ASSET_PATH=${{ matrix.artifact }}.zip" >> $GITHUB_ENV
         else
           tar -czf ${{ matrix.artifact }}.tar.gz -C release-package .
+          echo "ASSET_PATH=${{ matrix.artifact }}.tar.gz" >> $GITHUB_ENV
         fi
     
-    - name: Upload Windows Release Asset
-      if: matrix.os == 'windows-latest'
-      uses: actions/upload-release-asset@v1
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ${{ env.ASSET_PATH }}
+        body: |
+          ## 🦕 恐龙游戏新版本发布！
+          
+          ### 📦 下载链接
+          请根据你的操作系统选择对应的版本：
+          
+          - **Windows (x64)**: dino_game.exe.zip
+          - **Windows (ARM64)**: dino_game-arm64.exe.zip  
+          - **Linux (x64)**: dino_game-linux.tar.gz
+          - **macOS (Intel)**: dino_game-macos-intel.tar.gz
+          - **macOS (Apple Silicon)**: dino_game-macos-arm64.tar.gz
+          
+          ### 🎮 游戏说明
+          - 空格键：跳跃
+          - ESC键：退出游戏
+          - 躲避仙人掌，获得高分！
+          
+          ### 🐛 问题反馈
+          如果遇到问题，请在 Issues 中反馈。
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ needs.release.outputs.upload_url }}
-        asset_path: ./${{ matrix.artifact }}.zip
-        asset_name: ${{ matrix.artifact }}.zip
-        asset_content_type: application/zip
-    
-    - name: Upload Unix Release Asset
-      if: matrix.os != 'windows-latest'
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ needs.release.outputs.upload_url }}
-        asset_path: ./${{ matrix.artifact }}.tar.gz
-        asset_name: ${{ matrix.artifact }}.tar.gz
-        asset_content_type: application/gzip
