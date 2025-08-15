@@ -1,0 +1,20 @@
+[target.x86_64-pc-windows-msvc]
+rustflags = [
+    "-C", "target-cpu=native",
+    "-C", "target-feature=+crt-static",
+    "-C", "link-arg=/OPT:REF",
+    "-C", "link-arg=/OPT:ICF",
+    "-C", "link-arg=/LTCG",
+]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = [
+    "-C", "target-cpu=native",
+    "-C", "target-feature=+crt-static",
+    "-C", "link-arg=/OPT:REF",
+    "-C", "link-arg=/OPT:ICF",
+    "-C", "link-arg=/LTCG",
+]
+
+[build]
+rustflags = ["-C", "target-cpu=native"]
