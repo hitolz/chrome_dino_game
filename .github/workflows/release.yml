@@ -14,19 +14,24 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact: dino_game.exe
+            artifact: dino_game-windows-x64
+            package_type: msi
           - os: windows-latest
             target: aarch64-pc-windows-msvc
-            artifact: dino_game-arm64.exe
+            artifact: dino_game-windows-arm64
+            package_type: msi
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact: dino_game-linux
+            artifact: dino_game-linux-x64
+            package_type: appimage
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact: dino_game-macos-intel
+            package_type: dmg
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact: dino_game-macos-arm64
+            package_type: dmg
 
     steps:
     - uses: actions/checkout@v4
@@ -40,7 +45,13 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y libasound2-dev libudev-dev libxkbcommon-dev
+        sudo apt-get install -y libasound2-dev libudev-dev libxkbcommon-dev fuse libfuse2
+    
+    - name: Install dependencies (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        # 安装 WiX Toolset 用于创建 MSI 安装包
+        choco install wixtoolset -y
     
     - name: Build
       run: cargo build --release --target ${{ matrix.target }}
@@ -62,12 +73,126 @@ jobs:
         cp -r assets release-package/
         cp README.md release-package/ 2>/dev/null || true
         
-        # 创建压缩包
+        # 根据平台创建不同类型的安装包
         if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-          # Windows 使用 PowerShell 的 Compress-Archive
-          powershell -Command "Compress-Archive -Path release-package/* -DestinationPath ${{ matrix.artifact }}.zip"
+          # Windows: 创建 MSI 安装包
+          echo "Creating Windows MSI installer..."
+          
+          # 创建简单的 WiX 配置文件
+          echo '<?xml version="1.0" encoding="UTF-8"?>' > dino_game.wxs
+          echo '<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">' >> dino_game.wxs
+          echo '  <Product Id="*" Name="恐龙跳跃游戏" Language="1033" Version="0.0.4" Manufacturer="DinoGame" UpgradeCode="PUT-GUID-HERE">' >> dino_game.wxs
+          echo '    <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />' >> dino_game.wxs
+          echo '    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />' >> dino_game.wxs
+          echo '    <MediaTemplate EmbedCab="yes" />' >> dino_game.wxs
+          echo '    <Feature Id="ProductFeature" Title="恐龙跳跃游戏" Level="1">' >> dino_game.wxs
+          echo '      <ComponentGroupRef Id="ProductComponents" />' >> dino_game.wxs
+          echo '    </Feature>' >> dino_game.wxs
+          echo '    <UIRef Id="WixUI_Minimal" />' >> dino_game.wxs
+          echo '    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />' >> dino_game.wxs
+          echo '  </Product>' >> dino_game.wxs
+          echo '  <Fragment>' >> dino_game.wxs
+          echo '    <Directory Id="TARGETDIR" Name="SourceDir">' >> dino_game.wxs
+          echo '      <Directory Id="ProgramFilesFolder">' >> dino_game.wxs
+          echo '        <Directory Id="INSTALLFOLDER" Name="DinoGame" />' >> dino_game.wxs
+          echo '      </Directory>' >> dino_game.wxs
+          echo '    </Directory>' >> dino_game.wxs
+          echo '  </Fragment>' >> dino_game.wxs
+          echo '  <Fragment>' >> dino_game.wxs
+          echo '    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">' >> dino_game.wxs
+          echo '      <Component Id="ProductComponent" Guid="*">' >> dino_game.wxs
+          echo '        <File Id="DinoGameEXE" Source="release-package/dino_game.exe" KeyPath="yes" />' >> dino_game.wxs
+          echo '        <File Id="README" Source="release-package/README.md" />' >> dino_game.wxs
+          echo '        <RemoveFolder Id="INSTALLFOLDER" On="uninstall" />' >> dino_game.wxs
+          echo '        <RegistryValue Root="HKLM" Key="Software\[Manufacturer]\[ProductName]" Type="string" Value="" />' >> dino_game.wxs
+          echo '      </Component>' >> dino_game.wxs
+          echo '      <Component Id="AssetsComponent" Guid="*">' >> dino_game.wxs
+          echo '        <File Id="AssetsFolder" Source="release-package/assets/" />' >> dino_game.wxs
+          echo '      </Component>' >> dino_game.wxs
+          echo '    </ComponentGroup>' >> dino_game.wxs
+          echo '  </Fragment>' >> dino_game.wxs
+          echo '</Wix>' >> dino_game.wxs
+          
+          # 编译 MSI
+          "C:\Program Files (x86)\WiX Toolset v3.11\bin\candle.exe" dino_game.wxs -out dino_game.wixobj
+          "C:\Program Files (x86)\WiX Toolset v3.11\bin\light.exe" dino_game.wixobj -out ${{ matrix.artifact }}.msi
+          
+        elif [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+          # Linux: 创建 AppImage
+          echo "Creating Linux AppImage..."
+          
+          # 创建 AppDir 结构
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+          
+          # 复制文件
+          cp release-package/dino_game AppDir/usr/bin/
+          cp -r release-package/assets AppDir/usr/share/
+          
+          # 创建 .desktop 文件
+          echo '[Desktop Entry]' > AppDir/usr/share/applications/dino-game.desktop
+          echo 'Name=恐龙跳跃游戏' >> AppDir/usr/share/applications/dino-game.desktop
+          echo 'Comment=Dino Jump Game' >> AppDir/usr/share/applications/dino-game.desktop
+          echo 'Exec=dino_game' >> AppDir/usr/share/applications/dino-game.desktop
+          echo 'Icon=dino-game' >> AppDir/usr/share/applications/dino-game.desktop
+          echo 'Terminal=false' >> AppDir/usr/share/applications/dino-game.desktop
+          echo 'Type=Application' >> AppDir/usr/share/applications/dino-game.desktop
+          echo 'Categories=Game;' >> AppDir/usr/share/applications/dino-game.desktop
+          
+          # 下载 appimagetool
+          wget -O appimagetool "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+          chmod +x appimagetool
+          
+          # 创建 AppImage
+          ./appimagetool AppDir ${{ matrix.artifact }}.AppImage
+          
         else
-          tar -czf ${{ matrix.artifact }}.tar.gz -C release-package .
+          # macOS: 创建 DMG
+          echo "Creating macOS DMG..."
+          
+          # 创建应用程序包结构
+          mkdir -p "DinoGame.app/Contents/MacOS"
+          mkdir -p "DinoGame.app/Contents/Resources"
+          mkdir -p "DinoGame.app/Contents/Resources/assets"
+          
+          # 复制可执行文件
+          cp release-package/dino_game "DinoGame.app/Contents/MacOS/"
+          chmod +x "DinoGame.app/Contents/MacOS/dino_game"
+          
+          # 复制资源文件
+          cp -r release-package/assets/* "DinoGame.app/Contents/Resources/assets/"
+          
+          # 创建 Info.plist
+          echo '<?xml version="1.0" encoding="UTF-8"?>' > "DinoGame.app/Contents/Info.plist"
+          echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' >> "DinoGame.app/Contents/Info.plist"
+          echo '<plist version="1.0">' >> "DinoGame.app/Contents/Info.plist"
+          echo '<dict>' >> "DinoGame.app/Contents/Info.plist"
+          echo '    <key>CFBundleExecutable</key>' >> "DinoGame.app/Contents/Info.plist"
+          echo '    <string>dino_game</string>' >> "DinoGame.app/Contents/Info.plist"
+          echo '    <key>CFBundleIdentifier</key>' >> "DinoGame.app/Contents/Info.plist"
+          echo '    <string>com.dinogame.app</string>' >> "DinoGame.app/Contents/Info.plist"
+          echo '    <key>CFBundleName</key>' >> "DinoGame.app/Contents/Info.plist"
+          echo '    <string>恐龙跳跃游戏</string>' >> "DinoGame.app/Contents/Info.plist"
+          echo '    <key>CFBundleDisplayName</key>' >> "DinoGame.app/Contents/Info.plist"
+          echo '    <string>恐龙跳跃游戏</string>' >> "DinoGame.app/Contents/Info.plist"
+          echo '    <key>CFBundleVersion</key>' >> "DinoGame.app/Contents/Info.plist"
+          echo '    <string>0.0.4</string>' >> "DinoGame.app/Contents/Info.plist"
+          echo '    <key>CFBundleShortVersionString</key>' >> "DinoGame.app/Contents/Info.plist"
+          echo '    <string>0.0.4</string>' >> "DinoGame.app/Contents/Info.plist"
+          echo '    <key>CFBundlePackageType</key>' >> "DinoGame.app/Contents/Info.plist"
+          echo '    <string>APPL</string>' >> "DinoGame.app/Contents/Info.plist"
+          echo '    <key>CFBundleSignature</key>' >> "DinoGame.app/Contents/Info.plist"
+          echo '    <string>????</string>' >> "DinoGame.app/Contents/Info.plist"
+          echo '    <key>LSMinimumSystemVersion</key>' >> "DinoGame.app/Contents/Info.plist"
+          echo '    <string>10.13</string>' >> "DinoGame.app/Contents/Info.plist"
+          echo '    <key>NSHighResolutionCapable</key>' >> "DinoGame.app/Contents/Info.plist"
+          echo '    <true/>' >> "DinoGame.app/Contents/Info.plist"
+          echo '</dict>' >> "DinoGame.app/Contents/Info.plist"
+          echo '</plist>' >> "DinoGame.app/Contents/Info.plist"
+          
+          # 创建 DMG
+          hdiutil create -volname "恐龙跳跃游戏" -srcfolder "DinoGame.app" -ov -format UDZO ${{ matrix.artifact }}.dmg
         fi
     
     - name: Upload artifact
@@ -95,19 +220,24 @@ jobs:
         body: |
           ## 🦕 恐龙游戏新版本发布！
           
-          ### 📦 下载链接
-          请根据你的操作系统选择对应的版本：
+          ### 📦 安装包下载
+          请根据你的操作系统选择对应的安装包：
           
-          - **Windows (x64)**: dino_game.exe.zip
-          - **Windows (ARM64)**: dino_game-arm64.exe.zip  
-          - **Linux (x64)**: dino_game-linux.tar.gz
-          - **macOS (Intel)**: dino_game-macos-intel.tar.gz
-          - **macOS (Apple Silicon)**: dino_game-macos-arm64.tar.gz
+          - **Windows (x64)**: dino_game-windows-x64.msi - 双击安装
+          - **Windows (ARM64)**: dino_game-windows-arm64.msi - 双击安装
+          - **Linux (x64)**: dino_game-linux-x64.AppImage - 双击运行
+          - **macOS (Intel)**: dino_game-macos-intel.dmg - 拖拽安装
+          - **macOS (Apple Silicon)**: dino_game-macos-arm64.dmg - 拖拽安装
           
           ### 🎮 游戏说明
           - 空格键：跳跃
           - ESC键：退出游戏
           - 躲避仙人掌，获得高分！
+          
+          ### 📋 安装说明
+          - **Windows**: 双击 .msi 文件，按照安装向导完成安装
+          - **Linux**: 给 AppImage 执行权限后双击运行，或右键选择"作为程序运行"
+          - **macOS**: 打开 .dmg 文件，将应用拖拽到 Applications 文件夹
           
           ### 🐛 问题反馈
           如果遇到问题，请在 Issues 中反馈。
