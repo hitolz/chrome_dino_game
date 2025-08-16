@@ -115,10 +115,7 @@ fn main() {
             ),
             ..default()
         }))
-        // 添加帧率插件来更好地控制渲染
-        .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
-            std::time::Duration::from_secs_f64(1.0 / TARGET_FPS)
-        ))
+        
         .insert_resource(ClearColor(Color::srgb(0.9, 0.9, 0.9))) // 灰白色背景
         .init_state::<GameState>()
         .insert_resource(ObstacleTimer(Timer::from_seconds(
